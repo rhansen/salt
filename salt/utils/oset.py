@@ -101,6 +101,10 @@ class OrderedSet(collections.MutableSet):
             return False
         return set(self) == set(other)
 
+    def update(self, *others):
+        for other in others:
+            self |= other
+
 
 if __name__ == '__main__':
     s = OrderedSet('abracadaba')
