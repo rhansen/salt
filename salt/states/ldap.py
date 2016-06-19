@@ -16,7 +16,10 @@ import inspect
 import logging
 import salt.ext.six as six
 from salt.utils.odict import OrderedDict
-from salt.utils.oset import OrderedSet
+from salt.utils.oset import OrderedSet, WeaklyOrderedSet
+
+class AttributeSet(WeaklyOrderedSet):
+    pass
 
 log = logging.getLogger(__name__)
 
@@ -383,13 +386,16 @@ def _process_entries(l, entries):
         an ``(old, new)`` tuple that describes the current state of
         the entries and what they will look like after modification.
         Each item in the tuple is an OrderedDict that maps an entry DN
-        to another dict that maps an attribute name to a set of its
-        values (it's a set because according to the LDAP spec,
-        attribute value ordering is unspecified and there can't be
-        duplicates).  The structure looks like this::
+        to another dict that maps an attribute name to an AttributeSet
+        of its values.  (According to the LDAP spec, attribute value
+        ordering is unspecified and there can't be duplicates, but
+        AttributeSets are used because they are ordered and OpenLDAP
+        uses the X-ORDERED extension specified in
+        draft-chu-ldap-xordered-00.)  The structure looks like this::
 
-            {dn1: {attr1: set([val1])},
-             dn2: {attr1: set([val2]), attr2: set([val3, val4])}}
+            {dn1: {attr1: AttributeSet([val1])},
+             dn2: {attr1: AttributeSet([val2]),
+                   attr2: AttributeSet([val3, val4])}}
 
         All of an entry's attributes and values will be included, even
         if they will not be modified.  If an entry mentioned in the
@@ -420,7 +426,7 @@ def _process_entries(l, entries):
                 results = __salt__['ldap3.search'](l, dn, 'base')
                 if len(results) == 1:
                     attrs = results[dn]
-                    olde = dict(((attr, set(attrs[attr]))
+                    olde = dict(((attr, AttributeSet(attrs[attr]))
                                  for attr in attrs
                                  if len(attrs[attr])))
                 else:
@@ -477,7 +483,7 @@ def _update_entry(entry, status, directives):
                 if len(vals):
                     entry[attr] = vals
             elif directive == 'delete':
-                existing_vals = entry.pop(attr, set())
+                existing_vals = entry.pop(attr, AttributeSet())
                 if len(vals):
                     existing_vals -= vals
                     if len(existing_vals):
@@ -491,13 +497,15 @@ def _update_entry(entry, status, directives):
 
 
 def _toset(thing):
-    '''helper to convert various things to a set
+    '''helper to convert various things to an AttributeSet
 
     This enables flexibility in what users provide as the list of LDAP
     entry attribute values.  Note that the LDAP spec prohibits
-    duplicate values in an attribute and that the order is
-    unspecified, so a set is good for automatically removing
-    duplicates.
+    duplicate values in an attribute, so a set is good for
+    automatically removing duplicates.  The spec also says that the
+    order is unspecified, but OpenLDAP uses the X-ORDERED extension
+    specified in draft-chu-ldap-xordered-00, and order does matter
+    with that extension so an AttributeSet is used.
 
     None becomes an empty set.  Iterables except for strings have
     their elements added to a new set.  Non-None scalars (strings,
@@ -506,12 +514,12 @@ def _toset(thing):
 
     '''
     if thing is None:
-        return set()
+        return AttributeSet()
     if isinstance(thing, six.string_types):
-        return set((thing,))
+        return AttributeSet((thing,))
     # convert numbers to strings so that equality checks work
     # (LDAP stores numbers as strings)
     try:
-        return set((str(x) for x in thing))
+        return AttributeSet((str(x) for x in thing))
     except TypeError:
-        return set((str(thing),))
+        return AttributeSet((str(thing),))
