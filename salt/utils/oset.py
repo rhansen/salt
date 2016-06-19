@@ -106,6 +106,16 @@ class OrderedSet(collections.MutableSet):
             self |= other
 
 
+class WeaklyOrderedSet(OrderedSet):
+
+    def __eq__(self, other):
+        if other is None:
+            return False
+        if other is self:
+            return True
+        return set(self) == set(other)
+
+
 if __name__ == '__main__':
     s = OrderedSet('abracadaba')
     t = OrderedSet('simsalabim')
